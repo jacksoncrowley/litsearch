@@ -18,7 +18,7 @@ from pathlib import Path
 from litsearch import __version__
 from litsearch.config import load_config, write_default_config, _find_config
 from litsearch.pubmed import search, Paper
-from litsearch.scoring import score_all, generate_relevance_reason, generate_report_summary
+from litsearch.scoring import score_all, generate_relevance_reasons, generate_report_summary
 from litsearch.report import render_report
 
 
@@ -64,14 +64,11 @@ def cmd_run(args: argparse.Namespace) -> None:
     scored = score_all(papers, cfg)
     print(f"  {len(scored)} papers matched your keyword profile.")
 
-    # LLM relevance (optional, only for top N)
+    # LLM relevance (optional, only for top N) — one batched call
     top_n = min(cfg.output.max_highlights, len(scored))
     if cfg.llm.enabled and top_n > 0:
         print(f"Generating relevance justifications for top {top_n} papers...")
-        for paper in scored[:top_n]:
-            reason = generate_relevance_reason(paper, cfg)
-            if reason:
-                paper.relevance_reason = reason
+        generate_relevance_reasons(scored[:top_n], cfg)
         print("  Done.")
 
     # Global AI summary

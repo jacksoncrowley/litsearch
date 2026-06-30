@@ -138,18 +138,41 @@ def _llm_complete(prompt: str, cfg: Config) -> str:
             print(f"LLM error ({type(e).__name__}): {e}", file=sys.stderr)
             return ""
 
-    else:  # "openai" or "local"
+    elif provider == "local":
+        # ponytail: urllib avoids the openai package dep for local/custom endpoints
+        import json
+        import urllib.request
+
+        base_url = (cfg.llm.base_url or "http://localhost:11434/v1").rstrip("/")
+        payload = json.dumps({
+            "model": cfg.llm.model,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 200,
+            "temperature": 0.3,
+        }).encode()
+        headers = {"Content-Type": "application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        try:
+            req = urllib.request.Request(f"{base_url}/chat/completions", data=payload, headers=headers)
+            with urllib.request.urlopen(req, timeout=30) as r:
+                data = json.loads(r.read())
+            return data["choices"][0]["message"]["content"] or ""
+        except Exception as e:
+            print(f"LLM error ({type(e).__name__}): {e}", file=sys.stderr)
+            return ""
+
+    else:  # "openai"
         try:
             from openai import OpenAI
         except ImportError:
             print("LLM warning: 'openai' package not installed. Run: uv pip install -e '.[llm]'", file=sys.stderr)
             return ""
-        if provider != "local" and not api_key:
+        if not api_key:
             print("LLM warning: llm.enabled is true but no api_key set (LITSEARCH_OPENAI_API_KEY or config)", file=sys.stderr)
             return ""
-        client_kwargs: dict = {"api_key": api_key or "local"}
+        client_kwargs: dict = {"api_key": api_key}
         if cfg.llm.base_url:
-            # ponytail: base_url is user-supplied; restrict to localhost if SSRF becomes a concern
             client_kwargs["base_url"] = cfg.llm.base_url
         try:
             client = OpenAI(**client_kwargs)
@@ -166,32 +189,52 @@ def _llm_complete(prompt: str, cfg: Config) -> str:
 
 
 def generate_report_summary(papers: list[Paper], cfg: Config) -> str:
-    """Generate a 2-4 sentence global digest of the day's top papers."""
+    """Generate a 2-4 sentence digest of all hits for the day."""
     lines = []
-    for i, p in enumerate(papers[:10], 1):
-        snippet = p.abstract[:300].rstrip()
+    for i, p in enumerate(papers, 1):
+        snippet = p.abstract[:150].rstrip()
         lines.append(f"{i}. {p.title} ({', '.join(p.matched_groups)}): {snippet}")
 
     prompt = (
         f"You are a research assistant briefing a scientist in {cfg.profile.field}.\n"
-        f"Here are today's top papers ranked by relevance:\n\n"
+        f"Here are today's {len(papers)} matched papers:\n\n"
         f"{chr(10).join(lines)}\n\n"
-        f"Write 2-4 sentences summarising the day's findings. Lead with the most "
-        f"important paper and what it found, then briefly characterise the rest. "
-        f"Be direct and specific — name the paper and its finding, not just that it exists."
+        f"Write 2-4 sentences summarising what matters today. Call out any genuinely "
+        f"important papers by name and finding. If nothing stands out, say so directly. "
+        f"Do not pad — if today is a slow day, one sentence is fine."
     )
     return _llm_complete(prompt, cfg)
 
 
-def generate_relevance_reason(paper: Paper, cfg: Config) -> str:
-    """Generate a 1-2 sentence relevance justification using an LLM."""
-    groups = ", ".join(paper.matched_groups)
+def generate_relevance_reasons(papers: list[Paper], cfg: Config) -> None:
+    """Batch-generate relevance justifications for a list of papers (one LLM call)."""
+    if not papers:
+        return
+
+    entries = []
+    for i, p in enumerate(papers, 1):
+        groups = ", ".join(p.matched_groups)
+        entries.append(
+            f"[{i}] Title: {p.title}\nInterests: {groups}\nAbstract: {p.abstract[:400]}"
+        )
+
     prompt = (
-        f"You are a research literature assistant. Given a paper and the "
-        f"researcher's interests ({groups}), write 1-2 sentences explaining "
-        f"why this paper is relevant. Be specific and concise.\n\n"
-        f"Title: {paper.title}\n"
-        f"Abstract: {paper.abstract[:800]}\n\n"
-        f"Relevance:"
+        "You are a research literature assistant. For each numbered paper below, "
+        "write exactly one line starting with its number and a period, giving 1-2 sentences "
+        "explaining why it is relevant to the listed researcher interests. "
+        "Be specific and concise. Do not add any other text.\n\n"
+        + "\n\n".join(entries)
     )
-    return _llm_complete(prompt, cfg)
+
+    raw = _llm_complete(prompt, cfg)
+    if not raw:
+        return
+
+    # Parse "N. <reason>" lines — ponytail: simple split, handles most LLM outputs
+    import re as _re
+    for line in raw.splitlines():
+        m = _re.match(r"^\[?(\d+)\]?[.)]\s+(.+)", line.strip())
+        if m:
+            idx = int(m.group(1)) - 1
+            if 0 <= idx < len(papers):
+                papers[idx].relevance_reason = m.group(2).strip()
