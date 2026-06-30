@@ -163,9 +163,14 @@ def cmd_configure(_args: argparse.Namespace) -> None:
         model = input(f"Model [{default_model}]: ").strip() or default_model
         base_url = ""
 
-    new_llm = f"[llm]\nenabled = true\nprovider = \"{provider}\"\nmodel = \"{model}\"\napi_key = \"{api_key}\"\nbase_url = \"{base_url}\"\n"
+    def _te(s: str) -> str:  # TOML-escape a basic string value
+        return s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+
+    new_llm = f"[llm]\nenabled = true\nprovider = \"{_te(provider)}\"\nmodel = \"{_te(model)}\"\napi_key = \"{_te(api_key)}\"\nbase_url = \"{_te(base_url)}\"\n"
     cfg_path.write_text(re.sub(r"\[llm\].*?(?=\n\[|\Z)", new_llm, cfg_path.read_text(), flags=re.DOTALL))
     print(f"\nUpdated {cfg_path.name} — AI summaries now use {provider} / {model}.")
+    if api_key:
+        print("Note: API key stored in plaintext. Prefer LITSEARCH_OPENAI_API_KEY / LITSEARCH_ANTHROPIC_API_KEY env vars.")
     print("Run 'litsearch run' to try it.")
 
 

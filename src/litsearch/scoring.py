@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 import os
+import sys
 from typing import Optional
 
 from litsearch.config import Config, KeywordGroup, Author
@@ -131,7 +132,8 @@ def _llm_complete(prompt: str, cfg: Config) -> str:
                 messages=[{"role": "user", "content": prompt}],
             )
             return resp.content[0].text or ""
-        except Exception:
+        except Exception as e:
+            print(f"LLM error ({type(e).__name__}): {e}", file=sys.stderr)
             return ""
 
     else:  # "openai" or "local"
@@ -143,6 +145,7 @@ def _llm_complete(prompt: str, cfg: Config) -> str:
             return ""
         client_kwargs: dict = {"api_key": api_key or "local"}
         if cfg.llm.base_url:
+            # ponytail: base_url is user-supplied; restrict to localhost if SSRF becomes a concern
             client_kwargs["base_url"] = cfg.llm.base_url
         try:
             client = OpenAI(**client_kwargs)
@@ -153,7 +156,8 @@ def _llm_complete(prompt: str, cfg: Config) -> str:
                 temperature=0.3,
             )
             return resp.choices[0].message.content or ""
-        except Exception:
+        except Exception as e:
+            print(f"LLM error ({type(e).__name__}): {e}", file=sys.stderr)
             return ""
 
 
