@@ -19,17 +19,13 @@ def render_report(
         return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
 
     sections: dict[str, list[Paper]] = {}
-    for p in papers:
-        group = p.matched_groups[0] if p.matched_groups else "Other"
-        sections.setdefault(group, []).append(p)
-
     paper_badges: dict[str, list[dict]] = {}
     for p in papers:
-        badges = []
-        for author in cfg.authors:
-            if _author_matches(author, p.authors):
-                display = author.name.split(",")[0].strip() if "," in author.name else author.name.split()[-1]
-                badges.append({"name": display, "priority": author.priority})
+        sections.setdefault(p.matched_groups[0] if p.matched_groups else "Other", []).append(p)
+        badges = [
+            {"name": a.name.split(",")[0].strip() if "," in a.name else a.name.split()[-1], "priority": a.priority}
+            for a in cfg.authors if _author_matches(a, p.authors)
+        ]
         if badges:
             paper_badges[p.pmid] = badges
 
