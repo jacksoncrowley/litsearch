@@ -11,6 +11,7 @@ uv run litsearch run                   # run search, generate report
 uv run litsearch run --start-date 2026-06-01 --end-date 2026-06-30
 uv run litsearch init                  # create litsearch.toml in CWD
 uv run litsearch schedule              # install systemd/launchd timer
+uv run litsearch unschedule            # remove systemd/launchd timer
 ```
 
 LLM features require the optional extra: `uv pip install -e ".[llm]"`.

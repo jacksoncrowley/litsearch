@@ -241,6 +241,39 @@ def _install_launchd(cfg) -> None:
     print("Check status: launchctl list com.litsearch.daily")
 
 
+def cmd_unschedule(_args: argparse.Namespace) -> None:
+    """Remove the scheduled litsearch timer."""
+    if sys.platform.startswith("linux"):
+        _remove_systemd()
+    elif sys.platform == "darwin":
+        _remove_launchd()
+    else:
+        print("Nothing to remove — scheduling is not managed on this platform.")
+        sys.exit(1)
+
+
+def _remove_systemd() -> None:
+    service_dir = Path.home() / ".config/systemd/user"
+    os.system("systemctl --user stop litsearch.timer 2>/dev/null")
+    os.system("systemctl --user disable litsearch.timer 2>/dev/null")
+    for name in ("litsearch.timer", "litsearch.service"):
+        p = service_dir / name
+        if p.exists():
+            p.unlink()
+            print(f"Removed {p}")
+    os.system("systemctl --user daemon-reload")
+    print("litsearch timer removed.")
+
+
+def _remove_launchd() -> None:
+    plist_path = Path.home() / "Library/LaunchAgents/com.litsearch.daily.plist"
+    os.system(f"launchctl unload {plist_path} 2>/dev/null")
+    if plist_path.exists():
+        plist_path.unlink()
+        print(f"Removed {plist_path}")
+    print("litsearch agent removed.")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="litsearch — personalised literature search",
@@ -266,6 +299,9 @@ def main() -> None:
     p_sched = sub.add_parser("schedule", help="Install scheduled runs")
     p_sched.add_argument("--force", action="store_true", help="Schedule even if disabled in config")
 
+    # unschedule
+    sub.add_parser("unschedule", help="Remove scheduled runs")
+
     args = parser.parse_args()
 
     if args.command == "init":
@@ -274,6 +310,8 @@ def main() -> None:
         cmd_run(args)
     elif args.command == "schedule":
         cmd_schedule(args)
+    elif args.command == "unschedule":
+        cmd_unschedule(args)
     else:
         parser.print_help()
         sys.exit(1)

@@ -1,9 +1,3 @@
-"""HTML report generator.
-
-Produces a self-contained HTML report with collapsible sections,
-relevance badges, and author highlights. No external CSS/JS needed.
-"""
-
 from __future__ import annotations
 
 import datetime
@@ -20,17 +14,14 @@ def render_report(
     end_date: str,
     version: str = "0.1.0",
 ) -> str:
-    """Render a self-contained HTML report from scored papers."""
     def esc(s: str) -> str:
         return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
 
-    # Group papers by their first matched category
     sections: dict[str, list[Paper]] = {}
     for p in papers:
         group = p.matched_groups[0] if p.matched_groups else "Other"
         sections.setdefault(group, []).append(p)
 
-    # Build author badges per paper (pmid → list of badge dicts)
     paper_badges: dict[str, list[dict]] = {}
     for p in papers:
         badges = []
@@ -41,135 +32,72 @@ def render_report(
         if badges:
             paper_badges[p.pmid] = badges
 
-    group_counts = {g: len(ps) for g, ps in sections.items()}
-    author_hits = len(paper_badges)
     date_str = f"{start_date} to {end_date}" if start_date != end_date else end_date
+    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M UTC")
 
-    parts = ["<!DOCTYPE html>", "<html lang='en'>", "<head>"]
-    parts.append("<meta charset='UTF-8'>")
-    parts.append("<meta name='viewport' content='width=device-width, initial-scale=1.0'>")
-    parts.append(f"<title>litsearch Report — {esc(date_str)}</title>")
-    parts.append(CSS)
-    parts.append("</head><body>")
-    parts.append(f"<h1>litsearch Report</h1>")
-    parts.append(
-        f"<div class='meta'>{esc(date_str)} &middot; "
-        f"{len(papers)} papers scanned &middot; {len(papers)} hits &middot; "
-        f"Source: PubMed</div>"
-    )
+    parts = [
+        "<!DOCTYPE html>",
+        "<html lang='en'>",
+        "<head>",
+        "<meta charset='UTF-8'>",
+        "<meta name='viewport' content='width=device-width, initial-scale=1.0'>",
+        f"<title>litsearch Report — {esc(date_str)}</title>",
+        "<!-- <link rel='stylesheet' href='litsearch.css'> -->",
+        "</head>",
+        "<body>",
+        f"<h1>litsearch Report</h1>",
+        f"<p class='meta'>{esc(date_str)} &middot; {len(papers)} papers &middot; PubMed</p>",
+    ]
 
-    # Summary stats
-    parts.append("<div class='summary'>")
-    for group, count in sorted(group_counts.items()):
-        parts.append(
-            f"<div class='stat'><div class='num'>{count}</div>"
-            f"<div class='label'>{esc(group)}</div></div>"
-        )
-    if author_hits > 0:
-        parts.append(
-            f"<div class='stat'><div class='num'>{author_hits}</div>"
-            f"<div class='label'>Authors</div></div>"
-        )
-    parts.append("</div>")
+    # Summary
+    parts.append("<ul class='summary'>")
+    for group, ps in sorted(sections.items()):
+        parts.append(f"<li>{esc(group)}: {len(ps)}</li>")
+    parts.append("</ul>")
 
     # Sections
     for section_name, section_papers in sections.items():
-        parts.append(
-            f"<h2>{esc(section_name)} "
-            f"<span class='section-count'>({len(section_papers)})</span></h2>"
-        )
+        parts.append(f"<section class='section'>")
+        parts.append(f"<h2>{esc(section_name)} <span class='count'>({len(section_papers)})</span></h2>")
+        parts.append("<ul class='papers'>")
         for paper in section_papers:
-            badges = paper_badges.get(paper.pmid, [])
-            badges_html = "".join(
-                f"<span class='badge badge-{b['priority']}'>{esc(b['name'])}</span> "
-                for b in badges
-            )
-
-            meta = esc(paper.journal)
+            meta_parts = [esc(paper.journal)]
             if paper.pub_date:
-                meta += f" &middot; {esc(paper.pub_date)}"
+                meta_parts.append(esc(paper.pub_date))
             if paper.doi:
-                meta += f" &middot; DOI: {esc(paper.doi)}"
+                meta_parts.append(f"DOI: {esc(paper.doi)}")
 
-            parts.append("<div class='paper'>")
-            parts.append("<div class='paper-header'><div>")
-            parts.append(
-                f"<a class='paper-title' href='{esc(paper.url)}' "
-                f"target='_blank' rel='noopener'>{esc(paper.title)}</a>"
-            )
-            parts.append(f"<div class='paper-meta'>{meta}</div>")
-            if badges_html:
-                parts.append(f"<div style='margin-top:0.3rem'>{badges_html}</div>")
-            parts.append("</div>")
-            parts.append(f"<div class='score'>{paper.relevance_score:.1f}</div>")
-            parts.append("</div>")  # paper-header
+            parts.append("<li class='paper'>")
+            parts.append(f"<h3><a href='{esc(paper.url)}' target='_blank' rel='noopener'>{esc(paper.title)}</a></h3>")
+            parts.append(f"<p class='meta'>{' &middot; '.join(meta_parts)}</p>")
+
+            badges = paper_badges.get(paper.pmid, [])
+            if badges:
+                badges_html = " ".join(
+                    f"<span class='badge badge-{b['priority']}'>{esc(b['name'])}</span>"
+                    for b in badges
+                )
+                parts.append(f"<p class='badges'>{badges_html}</p>")
+
+            parts.append(f"<p class='score'>Score: {paper.relevance_score:.1f}</p>")
 
             if paper.relevance_reason:
-                parts.append(f"<div class='reason'>{esc(paper.relevance_reason)}</div>")
+                parts.append(f"<p class='reason'>{esc(paper.relevance_reason)}</p>")
 
-            abs_text = paper.abstract[:1000]
-            if len(paper.abstract) > 1000:
-                abs_text += "..."
-            parts.append("<details>")
-            parts.append("<summary>Abstract</summary>")
-            parts.append(f"<div class='abstract'>{esc(abs_text)}</div>")
-            parts.append("</details>")
+            if paper.abstract:
+                abs_text = paper.abstract[:1000] + ("..." if len(paper.abstract) > 1000 else "")
+                parts.append("<details><summary>Abstract</summary>")
+                parts.append(f"<p class='abstract'>{esc(abs_text)}</p>")
+                parts.append("</details>")
 
-            parts.append("</div>")  # paper
+            parts.append("</li>")
+        parts.append("</ul>")
+        parts.append("</section>")
 
     if not sections:
-        parts.append(
-            "<p style='color: var(--muted);'>"
-            "No papers matched your keyword profile for this date range.</p>"
-        )
+        parts.append("<p class='empty'>No papers matched your keyword profile for this date range.</p>")
 
-    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M UTC")
-    parts.append("<footer>")
-    parts.append(
-        f"Generated by <a href='https://github.com/crowley/litsearch' "
-        f"style='color: var(--accent);'>litsearch</a> "
-        f"v{esc(version)} &middot; {now}"
-    )
-    parts.append("</footer>")
+    parts.append(f"<footer>Generated by litsearch v{esc(version)} &middot; {now}</footer>")
     parts.append("</body></html>")
 
     return "\n".join(parts)
-
-
-CSS = """
-<style>
-  :root {
-    --bg: #0d1117; --fg: #c9d1d9; --accent: #58a6ff;
-    --border: #30363d; --card-bg: #161b22; --muted: #8b949e;
-    --high: #3fb950; --medium: #d2991d; --normal: #8b949e;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.6; padding: 2rem; max-width: 960px; margin: 0 auto; }
-  h1 { font-size: 1.6rem; margin-bottom: 0.3rem; }
-  h2 { font-size: 1.2rem; margin: 2rem 0 0.8rem; padding-bottom: 0.3rem; border-bottom: 1px solid var(--border); }
-  .meta { color: var(--muted); font-size: 0.85rem; margin-bottom: 1.5rem; }
-  .summary { display: flex; gap: 1.5rem; margin-bottom: 2rem; flex-wrap: wrap; }
-  .stat { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.8rem 1.2rem; text-align: center; }
-  .stat .num { font-size: 1.8rem; font-weight: 700; color: var(--accent); }
-  .stat .label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
-  .paper { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.2rem; margin-bottom: 0.8rem; }
-  .paper:hover { border-color: var(--accent); }
-  .paper-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.8rem; }
-  .paper-title { font-weight: 600; color: var(--accent); text-decoration: none; }
-  .paper-title:hover { text-decoration: underline; }
-  .paper-meta { font-size: 0.8rem; color: var(--muted); margin-top: 0.3rem; }
-  .badge { display: inline-block; padding: 0.15em 0.5em; border-radius: 12px; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; margin-right: 0.3rem; }
-  .badge-high { background: rgba(63,185,80,0.15); color: var(--high); }
-  .badge-medium { background: rgba(210,153,29,0.15); color: var(--medium); }
-  .badge-normal { background: rgba(139,148,158,0.15); color: var(--normal); }
-  .reason { font-size: 0.85rem; color: var(--fg); margin-top: 0.5rem; padding: 0.4rem 0.6rem; background: rgba(88,166,255,0.08); border-left: 3px solid var(--accent); border-radius: 0 4px 4px 0; }
-  .score { font-size: 0.75rem; color: var(--muted); white-space: nowrap; }
-  .section-count { color: var(--muted); font-weight: 400; font-size: 0.9rem; }
-  footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); font-size: 0.75rem; color: var(--muted); }
-  details { margin-top: 0.4rem; }
-  summary { cursor: pointer; color: var(--muted); font-size: 0.8rem; }
-  summary:hover { color: var(--accent); }
-  .abstract { font-size: 0.85rem; color: var(--fg); margin-top: 0.3rem; opacity: 0.85; }
-  a { color: var(--accent); }
-</style>
-"""
