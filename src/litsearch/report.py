@@ -14,6 +14,7 @@ def render_report(
     start_date: str,
     end_date: str,
     version: str = "0.1.0",
+    summary: str = "",
 ) -> str:
     def esc(s: str) -> str:
         return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
@@ -50,6 +51,9 @@ def render_report(
         f"<h1>litsearch Report</h1>",
         f"<p class='meta'>{esc(date_str)} &middot; {esc(cwd_display)} &middot; {len(papers)} papers &middot; PubMed</p>",
     ]
+
+    if summary:
+        parts.append(f"<p class='ai-summary'>{esc(summary)}</p>")
 
     # Summary
     parts.append("<ul class='summary'>")

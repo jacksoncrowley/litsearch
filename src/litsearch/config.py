@@ -129,15 +129,15 @@ max_highlights = 20       # top N papers in the digest
 group_by = "category"     # category | relevance | date
 
 # ── LLM (optional) ──────────────────────────────────────────────────────
-# If enabled, uses an LLM to write relevance justifications for top papers.
-# Requires `pip install litsearch[llm]` and an OpenAI-compatible API key.
+# If enabled, generates a brief AI summary at the top of each report.
+# Requires `pip install litsearch[llm]`. Run `litsearch configure` to set up.
 
 [llm]
 enabled = false
-provider = "openai"
-model = "gpt-4o-mini"
-api_key = ""              # or set LITSEARCH_OPENAI_API_KEY env var
-# base_url = ""           # for custom endpoints (e.g. local llama.cpp)
+provider = "openai"          # openai | claude | local
+model = "gpt-4o-mini"        # gpt-4o-mini | claude-haiku-4-5-20251001 | your-local-model
+api_key = ""                 # or set LITSEARCH_OPENAI_API_KEY / LITSEARCH_ANTHROPIC_API_KEY
+base_url = ""                # local only, e.g. http://localhost:11434/v1
 
 # ── Schedule (optional) ─────────────────────────────────────────────────
 # litsearch schedule reads this section.

@@ -108,27 +108,75 @@ def score_all(papers: list[Paper], cfg: Config) -> list[Paper]:
     return scored
 
 
+def _llm_complete(prompt: str, cfg: Config) -> str:
+    """Send a prompt to the configured LLM provider and return the text response."""
+    provider = cfg.llm.provider
+    api_key = cfg.llm.api_key or os.environ.get(
+        "LITSEARCH_ANTHROPIC_API_KEY" if provider == "claude" else "LITSEARCH_OPENAI_API_KEY",
+        "",
+    )
+
+    if provider == "claude":
+        try:
+            from anthropic import Anthropic
+        except ImportError:
+            return ""
+        if not api_key:
+            return ""
+        try:
+            client = Anthropic(api_key=api_key)
+            resp = client.messages.create(
+                model=cfg.llm.model,
+                max_tokens=200,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return resp.content[0].text or ""
+        except Exception:
+            return ""
+
+    else:  # "openai" or "local"
+        try:
+            from openai import OpenAI
+        except ImportError:
+            return ""
+        if provider != "local" and not api_key:
+            return ""
+        client_kwargs: dict = {"api_key": api_key or "local"}
+        if cfg.llm.base_url:
+            client_kwargs["base_url"] = cfg.llm.base_url
+        try:
+            client = OpenAI(**client_kwargs)
+            resp = client.chat.completions.create(
+                model=cfg.llm.model,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=200,
+                temperature=0.3,
+            )
+            return resp.choices[0].message.content or ""
+        except Exception:
+            return ""
+
+
+def generate_report_summary(papers: list[Paper], cfg: Config) -> str:
+    """Generate a 2-4 sentence global digest of the day's top papers."""
+    lines = []
+    for i, p in enumerate(papers[:10], 1):
+        snippet = p.abstract[:300].rstrip()
+        lines.append(f"{i}. {p.title} ({', '.join(p.matched_groups)}): {snippet}")
+
+    prompt = (
+        f"You are a research assistant briefing a scientist in {cfg.profile.field}.\n"
+        f"Here are today's top papers ranked by relevance:\n\n"
+        f"{chr(10).join(lines)}\n\n"
+        f"Write 2-4 sentences summarising the day's findings. Lead with the most "
+        f"important paper and what it found, then briefly characterise the rest. "
+        f"Be direct and specific — name the paper and its finding, not just that it exists."
+    )
+    return _llm_complete(prompt, cfg)
+
+
 def generate_relevance_reason(paper: Paper, cfg: Config) -> str:
-    """Generate a 1-2 sentence relevance justification using an LLM.
-
-    Requires `openai` package and an API key (via LITSEARCH_OPENAI_API_KEY
-    or config).
-    """
-    try:
-        from openai import OpenAI
-    except ImportError:
-        return ""
-
-    api_key = cfg.llm.api_key or os.environ.get("LITSEARCH_OPENAI_API_KEY", "")
-    if not api_key:
-        return ""
-
-    client_kwargs = {"api_key": api_key}
-    if cfg.llm.base_url:
-        client_kwargs["base_url"] = cfg.llm.base_url
-
-    client = OpenAI(**client_kwargs)
-
+    """Generate a 1-2 sentence relevance justification using an LLM."""
     groups = ", ".join(paper.matched_groups)
     prompt = (
         f"You are a research literature assistant. Given a paper and the "
@@ -138,14 +186,4 @@ def generate_relevance_reason(paper: Paper, cfg: Config) -> str:
         f"Abstract: {paper.abstract[:800]}\n\n"
         f"Relevance:"
     )
-
-    try:
-        response = client.chat.completions.create(
-            model=cfg.llm.model,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=120,
-            temperature=0.3,
-        )
-        return response.choices[0].message.content or ""
-    except Exception:
-        return ""
+    return _llm_complete(prompt, cfg)

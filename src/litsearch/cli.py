@@ -11,13 +11,14 @@ from __future__ import annotations
 import argparse
 import datetime
 import os
+import re
 import sys
 from pathlib import Path
 
 from litsearch import __version__
-from litsearch.config import load_config, write_default_config
+from litsearch.config import load_config, write_default_config, _find_config
 from litsearch.pubmed import search, Paper
-from litsearch.scoring import score_all, generate_relevance_reason
+from litsearch.scoring import score_all, generate_relevance_reason, generate_report_summary
 from litsearch.report import render_report
 
 
@@ -69,13 +70,19 @@ def cmd_run(args: argparse.Namespace) -> None:
                 paper.relevance_reason = reason
         print("  Done.")
 
+    # Global AI summary
+    summary = ""
+    if cfg.llm.enabled and scored:
+        print("Generating report summary...")
+        summary = generate_report_summary(scored, cfg)
+
     # Render
     output_dir = Path(cfg.output.dir) if cfg.output.dir else Path.cwd()
     output_dir.mkdir(parents=True, exist_ok=True)
 
     if cfg.output.format == "html":
         report_path = output_dir / f"litsearch_report_{end_date}.html"
-        html = render_report(scored, cfg, start_date, end_date, version=__version__)
+        html = render_report(scored, cfg, start_date, end_date, version=__version__, summary=summary)
         report_path.write_text(html)
         print(f"\nReport saved: {report_path}")
     else:
@@ -121,6 +128,61 @@ def _render_markdown(papers: list[Paper], cfg, start_date, end_date) -> str:
 
     lines.append(f"\n*Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M UTC')}*")
     return "\n".join(lines)
+
+
+def cmd_configure(_args: argparse.Namespace) -> None:
+    """Interactive wizard to configure the LLM provider."""
+    try:
+        cfg_path = _find_config()
+    except FileNotFoundError:
+        print("No litsearch.toml found. Run 'litsearch init' first.")
+        sys.exit(1)
+
+    print("Which AI provider would you like to use?")
+    print("  [1] OpenAI  (e.g. gpt-4o-mini)")
+    print("  [2] Claude  (Anthropic)")
+    print("  [3] Local   (Ollama / llama.cpp)")
+    choice = input("Choice [1]: ").strip() or "1"
+
+    if choice == "2":
+        provider = "claude"
+        default_model = "claude-haiku-4-5-20251001"
+        api_key = input("Anthropic API key: ").strip()
+        model = input(f"Model [{default_model}]: ").strip() or default_model
+        base_url = ""
+    elif choice == "3":
+        provider = "local"
+        default_url = "http://localhost:11434/v1"
+        base_url = input(f"Base URL [{default_url}]: ").strip() or default_url
+        model = input("Model name: ").strip()
+        api_key = ""
+    else:
+        provider = "openai"
+        default_model = "gpt-4o-mini"
+        api_key = input("OpenAI API key: ").strip()
+        model = input(f"Model [{default_model}]: ").strip() or default_model
+        base_url = ""
+
+    _patch_llm_section(cfg_path, provider=provider, model=model,
+                       api_key=api_key, base_url=base_url)
+    print(f"\nUpdated {cfg_path.name} — AI summaries now use {provider} / {model}.")
+    print("Run 'litsearch run' to try it.")
+
+
+def _patch_llm_section(path: Path, *, provider: str, model: str,
+                        api_key: str, base_url: str) -> None:
+    """Replace the [llm] section in litsearch.toml, preserving all other content."""
+    new_section = (
+        f"[llm]\n"
+        f"enabled = true\n"
+        f"provider = \"{provider}\"\n"
+        f"model = \"{model}\"\n"
+        f"api_key = \"{api_key}\"\n"
+        f"base_url = \"{base_url}\"\n"
+    )
+    text = path.read_text()
+    text = re.sub(r"\[llm\].*?(?=\n\[|\Z)", new_section, text, flags=re.DOTALL)
+    path.write_text(text)
 
 
 def cmd_schedule(args: argparse.Namespace) -> None:
@@ -295,6 +357,9 @@ def main() -> None:
     p_run.add_argument("--start-date", help="Start date (YYYY-MM-DD)")
     p_run.add_argument("--end-date", help="End date (YYYY-MM-DD)")
 
+    # configure
+    sub.add_parser("configure", help="Set up AI provider and API key")
+
     # schedule
     p_sched = sub.add_parser("schedule", help="Install scheduled runs")
     p_sched.add_argument("--force", action="store_true", help="Schedule even if disabled in config")
@@ -308,6 +373,8 @@ def main() -> None:
         cmd_init(args)
     elif args.command == "run":
         cmd_run(args)
+    elif args.command == "configure":
+        cmd_configure(args)
     elif args.command == "schedule":
         cmd_schedule(args)
     elif args.command == "unschedule":
