@@ -206,35 +206,3 @@ def generate_report_summary(papers: list[Paper], cfg: Config) -> str:
     return _llm_complete(prompt, cfg)
 
 
-def generate_relevance_reasons(papers: list[Paper], cfg: Config) -> None:
-    """Batch-generate relevance justifications for a list of papers (one LLM call)."""
-    if not papers:
-        return
-
-    entries = []
-    for i, p in enumerate(papers, 1):
-        groups = ", ".join(p.matched_groups)
-        entries.append(
-            f"[{i}] Title: {p.title}\nInterests: {groups}\nAbstract: {p.abstract[:400]}"
-        )
-
-    prompt = (
-        "You are a research literature assistant. For each numbered paper below, "
-        "write exactly one line starting with its number and a period, giving 1-2 sentences "
-        "explaining why it is relevant to the listed researcher interests. "
-        "Be specific and concise. Do not add any other text.\n\n"
-        + "\n\n".join(entries)
-    )
-
-    raw = _llm_complete(prompt, cfg)
-    if not raw:
-        return
-
-    # Parse "N. <reason>" lines — ponytail: simple split, handles most LLM outputs
-    import re as _re
-    for line in raw.splitlines():
-        m = _re.match(r"^\[?(\d+)\]?[.)]\s+(.+)", line.strip())
-        if m:
-            idx = int(m.group(1)) - 1
-            if 0 <= idx < len(papers):
-                papers[idx].relevance_reason = m.group(2).strip()

@@ -18,7 +18,7 @@ from pathlib import Path
 from litsearch import __version__
 from litsearch.config import load_config, write_default_config, _find_config
 from litsearch.pubmed import search, Paper
-from litsearch.scoring import score_all, generate_relevance_reasons, generate_report_summary
+from litsearch.scoring import score_all, generate_report_summary
 from litsearch.report import render_report
 
 
@@ -64,13 +64,6 @@ def cmd_run(args: argparse.Namespace) -> None:
     scored = score_all(papers, cfg)
     print(f"  {len(scored)} papers matched your keyword profile.")
 
-    # LLM relevance (optional, only for top N) — one batched call
-    top_n = min(cfg.output.max_highlights, len(scored))
-    if cfg.llm.enabled and top_n > 0:
-        print(f"Generating relevance justifications for top {top_n} papers...")
-        generate_relevance_reasons(scored[:top_n], cfg)
-        print("  Done.")
-
     # Global AI summary
     summary = ""
     if cfg.llm.enabled and scored:
@@ -88,12 +81,12 @@ def cmd_run(args: argparse.Namespace) -> None:
         print(f"\nReport saved: {report_path}")
     else:
         report_path = output_dir / f"litsearch_report_{end_date}.md"
-        md = _render_markdown(scored, cfg, start_date, end_date)
+        md = _render_markdown(scored, cfg, start_date, end_date, summary=summary)
         report_path.write_text(md)
         print(f"\nReport saved: {report_path}")
 
 
-def _render_markdown(papers: list[Paper], cfg, start_date, end_date) -> str:
+def _render_markdown(papers: list[Paper], cfg, start_date, end_date, summary: str = "") -> str:
     """Simple markdown output (fallback)."""
     lines = [
         f"# litsearch Report: {start_date} to {end_date}",
@@ -103,6 +96,8 @@ def _render_markdown(papers: list[Paper], cfg, start_date, end_date) -> str:
         "",
         "---",
     ]
+    if summary:
+        lines += ["", f"*{summary}*", "", "---"]
 
     # Group by first matched category
     sections: dict[str, list[Paper]] = {}
@@ -123,8 +118,6 @@ def _render_markdown(papers: list[Paper], cfg, start_date, end_date) -> str:
             if len(authors) > 200:
                 authors = authors[:200] + "..."
             lines.append(f"- **Authors:** {authors}")
-            if p.relevance_reason:
-                lines.append(f"- **Relevance:** {p.relevance_reason}")
             lines.append("")
 
     lines.append(f"\n*Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M UTC')}*")

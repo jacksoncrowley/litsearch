@@ -144,9 +144,6 @@ def render_report(
                 )
                 out.append(f"<div class='badges'>{badges_html}</div>")
 
-            if paper.relevance_reason:
-                out.append(f"<div class='reason'>{esc(paper.relevance_reason)}</div>")
-
             if paper.abstract:
                 abs_text = paper.abstract[:1000] + ("..." if len(paper.abstract) > 1000 else "")
                 out.append("<details><summary>Abstract</summary>")
