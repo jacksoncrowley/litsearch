@@ -109,7 +109,7 @@ def score_all(papers: list[Paper], cfg: Config) -> list[Paper]:
     return scored
 
 
-def _llm_complete(prompt: str, cfg: Config) -> str:
+def _llm_complete(prompt: str, cfg: Config, max_tokens: int = 200) -> str:
     """Send a prompt to the configured LLM provider and return the text response."""
     provider = cfg.llm.provider
     api_key = cfg.llm.api_key or os.environ.get(
@@ -130,7 +130,7 @@ def _llm_complete(prompt: str, cfg: Config) -> str:
             client = Anthropic(api_key=api_key)
             resp = client.messages.create(
                 model=cfg.llm.model,
-                max_tokens=200,
+                max_tokens=max_tokens,
                 messages=[{"role": "user", "content": prompt}],
             )
             return resp.content[0].text or ""
@@ -147,7 +147,7 @@ def _llm_complete(prompt: str, cfg: Config) -> str:
         payload = json.dumps({
             "model": cfg.llm.model,
             "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": 200,
+            "max_tokens": max_tokens,
             "temperature": 0.3,
         }).encode()
         headers = {"Content-Type": "application/json"}
@@ -155,9 +155,9 @@ def _llm_complete(prompt: str, cfg: Config) -> str:
             headers["Authorization"] = f"Bearer {api_key}"
         try:
             req = urllib.request.Request(f"{base_url}/chat/completions", data=payload, headers=headers)
-            with urllib.request.urlopen(req, timeout=30) as r:
-                data = json.loads(r.read())
-            return data["choices"][0]["message"]["content"] or ""
+            with urllib.request.urlopen(req, timeout=120) as r:
+                raw = r.read()
+            return json.loads(raw)["choices"][0]["message"]["content"] or ""
         except Exception as e:
             print(f"LLM error ({type(e).__name__}): {e}", file=sys.stderr)
             return ""
@@ -179,7 +179,7 @@ def _llm_complete(prompt: str, cfg: Config) -> str:
             resp = client.chat.completions.create(
                 model=cfg.llm.model,
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=200,
+                max_tokens=max_tokens,
                 temperature=0.3,
             )
             return resp.choices[0].message.content or ""
@@ -188,21 +188,27 @@ def _llm_complete(prompt: str, cfg: Config) -> str:
             return ""
 
 
+_SUMMARY_TOP_N = 15  # ponytail: cap prompt size for local model context limits
+
 def generate_report_summary(papers: list[Paper], cfg: Config) -> str:
-    """Generate a 2-4 sentence digest of all hits for the day."""
+    """Generate a 2-4 sentence digest of the day's hits."""
+    top = papers[:_SUMMARY_TOP_N]
     lines = []
-    for i, p in enumerate(papers, 1):
-        snippet = p.abstract[:150].rstrip()
+    for i, p in enumerate(top, 1):
+        snippet = p.abstract[:200].rstrip()
         lines.append(f"{i}. {p.title} ({', '.join(p.matched_groups)}): {snippet}")
 
+    shown = len(top)
+    total = len(papers)
+    context = f"top {shown} of {total}" if total > shown else str(total)
     prompt = (
         f"You are a research assistant briefing a scientist in {cfg.profile.field}.\n"
-        f"Here are today's {len(papers)} matched papers:\n\n"
+        f"Here are today's {context} matched papers (sorted by relevance):\n\n"
         f"{chr(10).join(lines)}\n\n"
         f"Write 2-4 sentences summarising what matters today. Call out any genuinely "
         f"important papers by name and finding. If nothing stands out, say so directly. "
         f"Do not pad — if today is a slow day, one sentence is fine."
     )
-    return _llm_complete(prompt, cfg)
+    return _llm_complete(prompt, cfg, max_tokens=400)
 
 
