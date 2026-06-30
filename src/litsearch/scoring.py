@@ -121,8 +121,10 @@ def _llm_complete(prompt: str, cfg: Config) -> str:
         try:
             from anthropic import Anthropic
         except ImportError:
+            print("LLM warning: 'anthropic' package not installed. Run: uv pip install -e '.[llm]'", file=sys.stderr)
             return ""
         if not api_key:
+            print("LLM warning: llm.enabled is true but no api_key set (LITSEARCH_ANTHROPIC_API_KEY or config)", file=sys.stderr)
             return ""
         try:
             client = Anthropic(api_key=api_key)
@@ -140,8 +142,10 @@ def _llm_complete(prompt: str, cfg: Config) -> str:
         try:
             from openai import OpenAI
         except ImportError:
+            print("LLM warning: 'openai' package not installed. Run: uv pip install -e '.[llm]'", file=sys.stderr)
             return ""
         if provider != "local" and not api_key:
+            print("LLM warning: llm.enabled is true but no api_key set (LITSEARCH_OPENAI_API_KEY or config)", file=sys.stderr)
             return ""
         client_kwargs: dict = {"api_key": api_key or "local"}
         if cfg.llm.base_url:

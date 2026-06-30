@@ -38,6 +38,10 @@ def cmd_init(args: argparse.Namespace) -> None:
 def cmd_run(args: argparse.Namespace) -> None:
     """Run a literature search and generate a report."""
     cfg = load_config()
+    if args.api_key:
+        cfg.llm.api_key = args.api_key
+    if args.base_url:
+        cfg.llm.base_url = args.base_url
 
     # Date handling
     end_date = args.end_date or datetime.date.today().isoformat()
@@ -138,30 +142,37 @@ def cmd_configure(_args: argparse.Namespace) -> None:
         print("No litsearch.toml found. Run 'litsearch init' first.")
         sys.exit(1)
 
-    print("Which AI provider would you like to use?")
-    print("  [1] OpenAI  (e.g. gpt-4o-mini)")
-    print("  [2] Claude  (Anthropic)")
-    print("  [3] Local   (Ollama / llama.cpp)")
-    choice = input("Choice [1]: ").strip() or "1"
-
-    if choice == "2":
-        provider = "claude"
-        default_model = "claude-haiku-4-5-20251001"
-        api_key = input("Anthropic API key: ").strip()
-        model = input(f"Model [{default_model}]: ").strip() or default_model
-        base_url = ""
-    elif choice == "3":
-        provider = "local"
-        default_url = "http://localhost:11434/v1"
-        base_url = input(f"Base URL [{default_url}]: ").strip() or default_url
-        model = input("Model name: ").strip()
-        api_key = ""
+    if _args.provider or _args.api_key or _args.base_url or _args.model:
+        provider = _args.provider or "openai"
+        api_key = _args.api_key or ""
+        base_url = _args.base_url or ""
+        default_model = {"claude": "claude-haiku-4-5-20251001", "local": "llama3"}.get(provider, "gpt-4o-mini")
+        model = _args.model or default_model
     else:
-        provider = "openai"
-        default_model = "gpt-4o-mini"
-        api_key = input("OpenAI API key: ").strip()
-        model = input(f"Model [{default_model}]: ").strip() or default_model
-        base_url = ""
+        print("Which AI provider would you like to use?")
+        print("  [1] OpenAI  (e.g. gpt-4o-mini)")
+        print("  [2] Claude  (Anthropic)")
+        print("  [3] Local   (Ollama / llama.cpp)")
+        choice = input("Choice [1]: ").strip() or "1"
+
+        if choice == "2":
+            provider = "claude"
+            default_model = "claude-haiku-4-5-20251001"
+            api_key = input("Anthropic API key: ").strip()
+            model = input(f"Model [{default_model}]: ").strip() or default_model
+            base_url = ""
+        elif choice == "3":
+            provider = "local"
+            default_url = "http://localhost:11434/v1"
+            base_url = input(f"Base URL [{default_url}]: ").strip() or default_url
+            model = input("Model name: ").strip()
+            api_key = ""
+        else:
+            provider = "openai"
+            default_model = "gpt-4o-mini"
+            api_key = input("OpenAI API key: ").strip()
+            model = input(f"Model [{default_model}]: ").strip() or default_model
+            base_url = ""
 
     def _te(s: str) -> str:  # TOML-escape a basic string value
         return s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
@@ -346,9 +357,15 @@ def main() -> None:
     p_run.add_argument("--start-date", help="Start date (YYYY-MM-DD)")
     p_run.add_argument("--end-date", help="End date (YYYY-MM-DD)")
     p_run.add_argument("--output-dir", help="Directory to write the report (overrides config)")
+    p_run.add_argument("--api-key", help="LLM API key (overrides config and env var)")
+    p_run.add_argument("--base-url", help="LLM base URL (overrides config, e.g. http://localhost:11434/v1)")
 
     # configure
-    sub.add_parser("configure", help="Set up AI provider and API key")
+    p_configure = sub.add_parser("configure", help="Set up AI provider and API key")
+    p_configure.add_argument("--provider", choices=["openai", "claude", "local"], help="LLM provider")
+    p_configure.add_argument("--api-key", help="API key")
+    p_configure.add_argument("--base-url", help="Base URL (for local/custom endpoints)")
+    p_configure.add_argument("--model", help="Model name")
 
     # schedule
     p_sched = sub.add_parser("schedule", help="Install scheduled runs")
