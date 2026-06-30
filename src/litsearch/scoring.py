@@ -103,7 +103,7 @@ def score_all(papers: list[Paper], cfg: Config) -> list[Paper]:
         score_paper(p, cfg)
 
     # Filter: only papers with at least one matched group
-    scored = [p for p in papers if p.matched_groups]
+    scored = [p for p in papers if p.matched_groups and p.relevance_score >= cfg.output.min_score]
     scored.sort(key=lambda p: p.relevance_score, reverse=True)
     return scored
 

@@ -44,6 +44,7 @@ class Author:
 class Output:
     format: str = "html"      # html | markdown
     max_highlights: int = 20
+    min_score: float = 0.0
     group_by: str = "category"  # category | relevance | date
     dir: str = ""             # empty = CWD
 
