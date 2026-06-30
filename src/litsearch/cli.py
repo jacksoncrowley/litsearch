@@ -77,7 +77,8 @@ def cmd_run(args: argparse.Namespace) -> None:
         summary = generate_report_summary(scored, cfg)
 
     # Render
-    output_dir = Path(cfg.output.dir) if cfg.output.dir else Path.cwd()
+    output_dir = Path(args.output_dir) if args.output_dir else \
+                 (Path(cfg.output.dir) if cfg.output.dir else Path.cwd())
     output_dir.mkdir(parents=True, exist_ok=True)
 
     if cfg.output.format == "html":
@@ -117,7 +118,7 @@ def _render_markdown(papers: list[Paper], cfg, start_date, end_date) -> str:
             lines.append(f"- **PMID:** [{p.pmid}]({p.url})")
             if p.doi:
                 lines.append(f"- **DOI:** {p.doi}")
-            lines.append(f"- **Journal:** {p.journal} | **Date:** {p.pub_date}")
+            lines.append(f"- **Score:** {p.relevance_score} | **Journal:** {p.journal} | **Date:** {p.pub_date}")
             authors = p.authors
             if len(authors) > 200:
                 authors = authors[:200] + "..."
@@ -356,6 +357,7 @@ def main() -> None:
     p_run = sub.add_parser("run", help="Run search and generate report")
     p_run.add_argument("--start-date", help="Start date (YYYY-MM-DD)")
     p_run.add_argument("--end-date", help="End date (YYYY-MM-DD)")
+    p_run.add_argument("--output-dir", help="Directory to write the report (overrides config)")
 
     # configure
     sub.add_parser("configure", help="Set up AI provider and API key")

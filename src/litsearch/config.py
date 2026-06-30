@@ -42,7 +42,7 @@ class Author:
 
 @dataclass
 class Output:
-    format: str = "html"      # html | markdown
+    format: str = "markdown"   # html | markdown
     max_highlights: int = 20
     min_score: float = 0.0
     group_by: str = "category"  # category | relevance | date
@@ -124,9 +124,10 @@ lookback_days = 1         # how many days to search
 
 # ── Output ──────────────────────────────────────────────────────────────
 [output]
-format = "html"           # html or markdown
+format = "markdown"       # html or markdown
 max_highlights = 20       # top N papers in the digest
 group_by = "category"     # category | relevance | date
+# dir = ""                # output directory; empty = CWD (e.g. "~/notes/obsidian")
 
 # ── LLM (optional) ──────────────────────────────────────────────────────
 # If enabled, generates a brief AI summary at the top of each report.
