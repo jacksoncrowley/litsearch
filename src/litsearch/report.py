@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+from pathlib import Path
 
 from litsearch.config import Config
 from litsearch.pubmed import Paper
@@ -34,6 +35,11 @@ def render_report(
 
     date_str = f"{start_date} to {end_date}" if start_date != end_date else end_date
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M UTC")
+    cwd = Path.cwd()
+    try:
+        cwd_display = "~/" + str(cwd.relative_to(Path.home()))
+    except ValueError:
+        cwd_display = cwd.name
 
     parts = [
         "<!DOCTYPE html>",
@@ -46,7 +52,7 @@ def render_report(
         "</head>",
         "<body>",
         f"<h1>litsearch Report</h1>",
-        f"<p class='meta'>{esc(date_str)} &middot; {len(papers)} papers &middot; PubMed</p>",
+        f"<p class='meta'>{esc(date_str)} &middot; {esc(cwd_display)} &middot; {len(papers)} papers &middot; PubMed</p>",
     ]
 
     # Summary
