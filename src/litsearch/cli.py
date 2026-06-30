@@ -47,7 +47,8 @@ def cmd_run(args: argparse.Namespace) -> None:
     # Search
     papers: list[Paper] = []
     if cfg.sources.pubmed:
-        papers = search(start_date, end_date, lookback_days=cfg.sources.lookback_days)
+        terms = [t for kg in cfg.keywords for t in kg.terms]
+        papers = search(terms, start_date, end_date, lookback_days=cfg.sources.lookback_days)
 
     if not papers:
         print("No papers found.")

@@ -173,15 +173,20 @@ def extract_papers(xml_roots: list["ET.ElementTree"]) -> list[Paper]:
 
 
 def search(
+    terms: list[str],
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     lookback_days: int = 1,
 ) -> list[Paper]:
     """Run a PubMed search over the date range, return all Paper objects.
 
-    Uses a broad query to capture biophysics-relevant papers, then returns
-    everything for client-side keyword filtering.
+    Builds a broad OR query from `terms` (all keyword group terms from config)
+    to fetch candidates; client-side scoring does fine-grained filtering.
     """
+    if not terms:
+        print("No keywords configured — nothing to search.")
+        return []
+
     if end_date is None:
         end_date = date.today().isoformat()
     if start_date is None:
@@ -190,17 +195,10 @@ def search(
     start_pub = start_date.replace("-", "/")
     end_pub = end_date.replace("-", "/")
 
+    term_clauses = " OR ".join(f'"{t}"[Title/Abstract]' for t in terms)
     query = (
         f'("{start_pub}"[Date - Publication] : "{end_pub}"[Date - Publication]) '
-        f'AND (membrane[Title/Abstract] OR bilayer[Title/Abstract] '
-        f'OR "lipid bilayer"[Title/Abstract] OR transmembrane[Title/Abstract] '
-        f'OR liposome[Title/Abstract] OR "protein design"[Title/Abstract] '
-        f'OR "protein engineering"[Title/Abstract] '
-        f'OR "molecular dynamics"[Title/Abstract] OR "free energy"[Title/Abstract] '
-        f'OR "coarse grained"[Title/Abstract] OR "force field"[Title/Abstract] '
-        f'OR GROMACS[Title/Abstract] OR Rosetta[Title/Abstract] '
-        f'OR RFdiffusion[Title/Abstract] OR ProteinMPNN[Title/Abstract] '
-        f'OR cardiolipin[Title/Abstract])'
+        f'AND ({term_clauses})'
     )
 
     print(f"PubMed: searching {start_date} to {end_date}...")
