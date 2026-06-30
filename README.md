@@ -128,3 +128,6 @@ api_key = ""    # or set LITSEARCH_OPENAI_API_KEY in your environment
 ```
 
 When enabled, the top papers get a one-sentence explanation of why they matched your profile.
+
+## Acknowledgements
+This project was my first real foray into working with agents. Specifically, I used Claude Sonnet 4.6, the ponytail plugin, and reviewed all code changes myself.

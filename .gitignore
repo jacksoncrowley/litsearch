@@ -12,3 +12,4 @@ wheels/
 # Personal config and reports
 litsearch.toml
 litsearch_report_*.html
+litsearch_report_*.md
