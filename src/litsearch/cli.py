@@ -77,8 +77,7 @@ def cmd_run(args: argparse.Namespace) -> None:
         summary = generate_report_summary(scored, cfg)
 
     # Render
-    output_dir = Path(args.output_dir) if args.output_dir else \
-                 (Path(cfg.output.dir) if cfg.output.dir else Path.cwd())
+    output_dir = next((Path(x) for x in (args.output_dir, cfg.output.dir) if x), Path.cwd())
     output_dir.mkdir(parents=True, exist_ok=True)
 
     if cfg.output.format == "html":
@@ -164,26 +163,10 @@ def cmd_configure(_args: argparse.Namespace) -> None:
         model = input(f"Model [{default_model}]: ").strip() or default_model
         base_url = ""
 
-    _patch_llm_section(cfg_path, provider=provider, model=model,
-                       api_key=api_key, base_url=base_url)
+    new_llm = f"[llm]\nenabled = true\nprovider = \"{provider}\"\nmodel = \"{model}\"\napi_key = \"{api_key}\"\nbase_url = \"{base_url}\"\n"
+    cfg_path.write_text(re.sub(r"\[llm\].*?(?=\n\[|\Z)", new_llm, cfg_path.read_text(), flags=re.DOTALL))
     print(f"\nUpdated {cfg_path.name} — AI summaries now use {provider} / {model}.")
     print("Run 'litsearch run' to try it.")
-
-
-def _patch_llm_section(path: Path, *, provider: str, model: str,
-                        api_key: str, base_url: str) -> None:
-    """Replace the [llm] section in litsearch.toml, preserving all other content."""
-    new_section = (
-        f"[llm]\n"
-        f"enabled = true\n"
-        f"provider = \"{provider}\"\n"
-        f"model = \"{model}\"\n"
-        f"api_key = \"{api_key}\"\n"
-        f"base_url = \"{base_url}\"\n"
-    )
-    text = path.read_text()
-    text = re.sub(r"\[llm\].*?(?=\n\[|\Z)", new_section, text, flags=re.DOTALL)
-    path.write_text(text)
 
 
 def cmd_schedule(args: argparse.Namespace) -> None:
