@@ -285,12 +285,61 @@ class TestLLMSecurity:
         assert _llm_complete("test", _llm_cfg(provider="openai", api_key="sk-x")) == ""
 
     def test_toml_escape_in_configure(self):
-        from litsearch.cli import cmd_configure
-        # Verify _te logic inline — the function is nested, so test its contract directly
-        def _te(s: str) -> str:
-            return s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+        from litsearch.cli import _te
 
         assert _te('sk"abc') == 'sk\\"abc'
         assert _te("sk\nabc") == "sk\\nabc"
         assert _te("sk\\abc") == "sk\\\\abc"
         assert _te("normal-key-123") == "normal-key-123"
+
+
+# ── refine ───────────────────────────────────────────────────────────────────
+
+class TestRefine:
+    def test_extract_json_plain(self):
+        from litsearch.cli import _extract_json
+        assert _extract_json('{"a": 1}') == {"a": 1}
+
+    def test_extract_json_fenced(self):
+        from litsearch.cli import _extract_json
+        assert _extract_json('```json\n{"a": 1}\n```') == {"a": 1}
+
+    def test_coerce_ignores_unknown_keys(self):
+        from litsearch.cli import _coerce
+        kg = _coerce(KeywordGroup, {"label": "X", "terms": ["a"], "extra": "ignored"})
+        assert kg.label == "X"
+        assert kg.terms == ["a"]
+        assert kg.weight == 1  # default preserved
+
+    def test_replace_array_table_replaces_existing(self):
+        from litsearch.cli import _replace_array_table
+        content = (
+            '[[keywords]]\nlabel = "Old"\nterms = ["a"]\nweight = 1\nmust_have = []\n'
+            '\n[sources]\npubmed = true\n'
+        )
+        new_block = '[[keywords]]\nlabel = "New"\nterms = ["b"]\nweight = 2\nmust_have = []\n'
+        result = _replace_array_table(content, "keywords", new_block)
+        assert "New" in result
+        assert "Old" not in result
+        assert "[sources]" in result
+
+    def test_replace_array_table_replaces_multiple_blocks(self):
+        from litsearch.cli import _replace_array_table
+        content = (
+            '[[authors]]\nname = "A"\npriority = "high"\nreason = ""\n'
+            '\n[[authors]]\nname = "B"\npriority = "normal"\nreason = ""\n'
+            '\n[sources]\npubmed = true\n'
+        )
+        new_block = '[[authors]]\nname = "C"\npriority = "high"\nreason = ""\n'
+        result = _replace_array_table(content, "authors", new_block)
+        assert result.count("[[authors]]") == 1
+        assert "\"C\"" in result
+        assert "\"A\"" not in result
+
+    def test_replace_array_table_inserts_when_absent(self):
+        from litsearch.cli import _replace_array_table
+        content = '[profile]\nfield = "x"\n\n[sources]\npubmed = true\n'
+        new_block = '[[authors]]\nname = "New"\npriority = "high"\nreason = ""\n'
+        result = _replace_array_table(content, "authors", new_block)
+        assert "[[authors]]" in result
+        assert result.index("[[authors]]") < result.index("[sources]")

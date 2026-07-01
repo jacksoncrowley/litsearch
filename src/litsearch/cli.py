@@ -3,6 +3,7 @@
 Commands:
     litsearch init       Create litsearch.toml in current directory
     litsearch run        Run search and generate report
+    litsearch refine     Update keywords/authors from a plain-English description
     litsearch schedule   Set up systemd/launchd timer (Linux/macOS)
 """
 
@@ -10,15 +11,17 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import json
 import os
 import re
 import sys
+from dataclasses import asdict, fields as dc_fields
 from pathlib import Path
 
 from litsearch import __version__
-from litsearch.config import Config, load_config, write_default_config, _find_config
+from litsearch.config import Config, KeywordGroup, Author, load_config, write_default_config, _find_config
 from litsearch.pubmed import search, Paper
-from litsearch.scoring import score_all, generate_report_summary
+from litsearch.scoring import score_all, generate_report_summary, _llm_complete
 from litsearch.report import render_report
 
 
@@ -128,6 +131,10 @@ def _render_markdown(
     return "\n".join(lines)
 
 
+def _te(s: str) -> str:  # TOML-escape a basic string value
+    return s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+
+
 def cmd_configure(_args: argparse.Namespace) -> None:
     """Interactive wizard to configure the LLM provider."""
     try:
@@ -168,15 +175,120 @@ def cmd_configure(_args: argparse.Namespace) -> None:
             model = input(f"Model [{default_model}]: ").strip() or default_model
             base_url = ""
 
-    def _te(s: str) -> str:  # TOML-escape a basic string value
-        return s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
-
     new_llm = f"[llm]\nenabled = true\nprovider = \"{_te(provider)}\"\nmodel = \"{_te(model)}\"\napi_key = \"{_te(api_key)}\"\nbase_url = \"{_te(base_url)}\"\n"
     cfg_path.write_text(re.sub(r"\[llm\].*?(?=\n\[|\Z)", new_llm, cfg_path.read_text(), flags=re.DOTALL))
     print(f"\nUpdated {cfg_path.name} — AI summaries now use {provider} / {model}.")
     if api_key:
         print("Note: API key stored in plaintext. Prefer LITSEARCH_OPENAI_API_KEY / LITSEARCH_ANTHROPIC_API_KEY env vars.")
     print("Run 'litsearch run' to try it.")
+
+
+def _extract_json(text: str) -> dict:
+    """Parse a JSON object out of an LLM response, tolerating ```-fences."""
+    text = text.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```[a-zA-Z]*\n|```\s*$", "", text, flags=re.M).strip()
+    return json.loads(text)
+
+
+def _coerce(cls, d: dict):
+    """Build a dataclass instance from a dict, ignoring unknown keys."""
+    known = {f.name for f in dc_fields(cls)}
+    return cls(**{k: v for k, v in d.items() if k in known})
+
+
+def _dump_keywords(groups: list[KeywordGroup]) -> str:
+    parts = []
+    for kg in groups:
+        terms = ", ".join(f'"{_te(t)}"' for t in kg.terms)
+        must_have = ", ".join(f'"{_te(t)}"' for t in kg.must_have)
+        parts.append(
+            f'[[keywords]]\nlabel = "{_te(kg.label)}"\nterms = [{terms}]\n'
+            f"weight = {kg.weight}\nmust_have = [{must_have}]\n"
+        )
+    return "\n".join(parts)
+
+
+def _dump_authors(authors: list[Author]) -> str:
+    parts = []
+    for a in authors:
+        parts.append(
+            f'[[authors]]\nname = "{_te(a.name)}"\npriority = "{_te(a.priority)}"\n'
+            f'reason = "{_te(a.reason)}"\n'
+        )
+    return "\n".join(parts)
+
+
+def _replace_array_table(content: str, name: str, new_block: str) -> str:
+    """Replace all `[[name]]` tables in content with new_block.
+
+    Inserts before `[sources]` (or appends) if the table isn't present yet.
+    """
+    pattern = re.compile(rf"(?:^\[\[{name}\]\]\n(?:(?!^\[).)*)+", re.M | re.S)
+    if pattern.search(content):
+        return pattern.sub(lambda _m: new_block, content, count=1)
+    if not new_block:
+        return content
+    if "[sources]" in content:
+        return content.replace("[sources]", new_block + "\n[sources]", 1)
+    return content.rstrip("\n") + "\n\n" + new_block
+
+
+def cmd_refine(args: argparse.Namespace) -> None:
+    """Update keyword groups and tracked authors from a plain-English description."""
+    cfg_path = _find_config()
+    cfg = load_config(cfg_path)
+
+    instructions = " ".join(args.instructions).strip()
+    if not instructions:
+        instructions = input("Describe the changes: ").strip()
+    if not instructions:
+        print("No instructions given, nothing to do.")
+        return
+
+    current = {
+        "keywords": [asdict(kg) for kg in cfg.keywords],
+        "authors": [asdict(a) for a in cfg.authors],
+    }
+    prompt = (
+        "You maintain a researcher's literature-search config.\n"
+        f"Current keyword groups and tracked authors (JSON):\n{json.dumps(current, indent=2)}\n\n"
+        f'The researcher says: "{instructions}"\n\n'
+        'Return ONLY a JSON object with the COMPLETE updated "keywords" and "authors" '
+        "lists (include unchanged groups/authors as-is; add, edit, or remove per the "
+        "instructions). Schema: keywords[].{label:str, terms:[str], weight:int, "
+        'must_have:[str]}, authors[].{name:str, priority:"high"|"medium"|"normal", '
+        "reason:str}. No prose, no markdown fences, JSON only."
+    )
+
+    raw = _llm_complete(prompt, cfg, max_tokens=2000)
+    if not raw:
+        sys.exit(1)
+
+    try:
+        data = _extract_json(raw)
+        new_keywords = [_coerce(KeywordGroup, kg) for kg in data["keywords"]]
+        new_authors = [_coerce(Author, a) for a in data.get("authors", [])]
+    except (json.JSONDecodeError, TypeError, KeyError) as e:
+        print(f"Could not parse LLM response ({type(e).__name__}: {e}):\n{raw}", file=sys.stderr)
+        sys.exit(1)
+
+    print("\nProposed keyword groups:")
+    for kg in new_keywords:
+        print(f"  - {kg.label} ({len(kg.terms)} terms, weight={kg.weight})")
+    print("Proposed tracked authors:")
+    for a in new_authors:
+        print(f"  - {a.name} ({a.priority})")
+
+    if input("\nApply these changes to litsearch.toml? [y/N]: ").strip().lower() not in ("y", "yes"):
+        print("Aborted — no changes made.")
+        return
+
+    text = cfg_path.read_text()
+    text = _replace_array_table(text, "keywords", _dump_keywords(new_keywords))
+    text = _replace_array_table(text, "authors", _dump_authors(new_authors))
+    cfg_path.write_text(text)
+    print(f"Updated {cfg_path.name}.")
 
 
 def cmd_schedule(args: argparse.Namespace) -> None:
@@ -362,6 +474,13 @@ def main() -> None:
     p_configure.add_argument("--base-url", help="Base URL (for local/custom endpoints)")
     p_configure.add_argument("--model", help="Model name")
 
+    # refine
+    p_refine = sub.add_parser("refine", help="Update keywords/authors from a plain-English description")
+    p_refine.add_argument(
+        "instructions", nargs="*",
+        help="e.g. 'add more on cryo-EM, drop the MD Simulation group' (prompts interactively if omitted)",
+    )
+
     # schedule
     p_sched = sub.add_parser("schedule", help="Install scheduled runs")
     p_sched.add_argument("--force", action="store_true", help="Schedule even if disabled in config")
@@ -377,6 +496,8 @@ def main() -> None:
         cmd_run(args)
     elif args.command == "configure":
         cmd_configure(args)
+    elif args.command == "refine":
+        cmd_refine(args)
     elif args.command == "schedule":
         cmd_schedule(args)
     elif args.command == "unschedule":
