@@ -9,7 +9,6 @@ from __future__ import annotations
 import re
 import os
 import sys
-from typing import Optional
 
 from litsearch.config import Config, KeywordGroup, Author
 from litsearch.pubmed import Paper
@@ -18,9 +17,8 @@ from litsearch.pubmed import Paper
 def score_paper(paper: Paper, cfg: Config) -> Paper:
     """Score a paper against all keyword groups and author profiles.
 
-    Returns the paper with matched_groups, relevance_score, and
-    relevance_reason populated. Modifies paper in place but also
-    returns it for chaining.
+    Returns the paper with matched_groups and relevance_score populated.
+    Modifies paper in place but also returns it for chaining.
     """
     text = f"{paper.title} {paper.abstract}"
     total_score = 0.0

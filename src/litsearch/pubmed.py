@@ -6,7 +6,6 @@ Free, no API key required. Rate limit: 3 req/sec without key, 10 req/sec with.
 from __future__ import annotations
 
 import json
-import re
 import time
 import urllib.parse
 import urllib.request
@@ -21,6 +20,8 @@ EFETCH = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
 
 @dataclass
 class Paper:
+    """A single PubMed article, plus scoring fields filled in later by `scoring.py`."""
+
     pmid: str
     title: str
     abstract: str
@@ -33,7 +34,6 @@ class Paper:
     # Set after keyword matching
     matched_groups: list[str] = field(default_factory=list)
     relevance_score: float = 0.0
-    relevance_reason: str = ""
 
 
 

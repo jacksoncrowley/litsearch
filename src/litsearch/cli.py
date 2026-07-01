@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 from litsearch import __version__
-from litsearch.config import load_config, write_default_config, _find_config
+from litsearch.config import Config, load_config, write_default_config, _find_config
 from litsearch.pubmed import search, Paper
 from litsearch.scoring import score_all, generate_report_summary
 from litsearch.report import render_report
@@ -63,6 +63,8 @@ def cmd_run(args: argparse.Namespace) -> None:
     print(f"Scoring {len(papers)} papers...")
     scored = score_all(papers, cfg)
     print(f"  {len(scored)} papers matched your keyword profile.")
+    if cfg.output.max_highlights:
+        scored = scored[: cfg.output.max_highlights]
 
     # Global AI summary
     summary = ""
@@ -86,7 +88,9 @@ def cmd_run(args: argparse.Namespace) -> None:
         print(f"\nReport saved: {report_path}")
 
 
-def _render_markdown(papers: list[Paper], cfg, start_date, end_date, summary: str = "") -> str:
+def _render_markdown(
+    papers: list[Paper], cfg: Config, start_date: str, end_date: str, summary: str = ""
+) -> str:
     """Simple markdown output (fallback)."""
     lines = [
         f"# litsearch Report: {start_date} to {end_date}",
@@ -196,7 +200,7 @@ def cmd_schedule(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
-def _install_systemd(cfg) -> None:
+def _install_systemd(cfg: Config) -> None:
     """Install a systemd user timer."""
     service_dir = Path.home() / ".config/systemd/user"
     service_dir.mkdir(parents=True, exist_ok=True)
@@ -243,7 +247,7 @@ WantedBy=timers.target
     print("Check status: systemctl --user status litsearch.timer")
 
 
-def _install_launchd(cfg) -> None:
+def _install_launchd(cfg: Config) -> None:
     """Install a launchd agent (macOS)."""
     time_parts = cfg.schedule.time.split(":")
     hour, minute = int(time_parts[0]), int(time_parts[1]) if len(time_parts) > 1 else 0
@@ -327,6 +331,7 @@ def _remove_launchd() -> None:
 
 
 def main() -> None:
+    """Parse CLI args and dispatch to the matching `cmd_*` handler."""
     parser = argparse.ArgumentParser(
         description="litsearch — personalised literature search",
         prog="litsearch",

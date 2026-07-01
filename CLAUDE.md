@@ -26,6 +26,6 @@ The pipeline is linear: **config → pubmed → scoring → report**.
 - `report.py` — `render_report()` groups papers, builds author badges into a local `paper_badges` dict (keyed by pmid), then renders self-contained HTML. No intermediate `_build_html` split. Called by `cli.py:cmd_run`.
 - `cli.py` — argparse entry point wiring `init` / `run` / `schedule` subcommands.
 
-`Paper.relevance_reason` is optionally populated by `generate_relevance_reason()` in `scoring.py` via OpenAI-compatible API (key from `LITSEARCH_OPENAI_API_KEY` env var or config).
+`generate_report_summary()` in `scoring.py` optionally generates a whole-report LLM summary (not per-paper) via an OpenAI-compatible API (key from `LITSEARCH_OPENAI_API_KEY` / `LITSEARCH_ANTHROPIC_API_KEY` env var or config).
 
-Tests live in `tests/test_core.py`; there is a stray copy at `src/litsearch/test_core.py` that pytest ignores (testpaths = ["tests"]).
+Tests live in `tests/test_core.py`.

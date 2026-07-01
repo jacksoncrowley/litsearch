@@ -29,7 +29,6 @@ class TestConfig:
             cfg_path = Path(td) / "litsearch.toml"
             cfg_path.write_text("""\
 [profile]
-name = "Test User"
 field = "testing"
 
 [[keywords]]
@@ -53,7 +52,6 @@ max_highlights = 10
 min_score = 2.0
 """)
             cfg = load_config(cfg_path)
-            assert cfg.profile.name == "Test User"
             assert cfg.profile.field == "testing"
             assert len(cfg.keywords) == 1
             assert cfg.keywords[0].label == "Topic A"

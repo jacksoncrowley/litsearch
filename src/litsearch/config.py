@@ -6,27 +6,25 @@ used throughout the package.
 
 from __future__ import annotations
 
-import sys
+import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
-
-if sys.version_info >= (3, 11):
-    import tomllib
-else:
-    import tomli as tomllib
 
 
 # ── data classes ────────────────────────────────────────────────────────────
 
 @dataclass
 class Profile:
-    name: str = ""
+    """The researcher this digest is being run for."""
+
     field: str = ""
 
 
 @dataclass
 class KeywordGroup:
+    """A research topic: terms to match, how much it counts, and an optional gate."""
+
     label: str
     terms: list[str] = field(default_factory=list)
     weight: int = 1
@@ -35,6 +33,8 @@ class KeywordGroup:
 
 @dataclass
 class Author:
+    """An author to track; matching papers get a relevance boost."""
+
     name: str
     priority: str = "normal"  # high | medium | normal
     reason: str = ""
@@ -42,25 +42,29 @@ class Author:
 
 @dataclass
 class Output:
+    """Report format and filtering options."""
+
     format: str = "markdown"   # html | markdown
     theme: str = "litsearch"   # litsearch | none
-    max_highlights: int = 20
+    max_highlights: int = 20  # 0 = unlimited
     min_score: float = 0.0
-    group_by: str = "category"  # category | relevance | date
     dir: str = ""             # empty = CWD
 
 
 @dataclass
 class Sources:
+    """Which literature sources to query."""
+
     pubmed: bool = True
-    semantic_scholar: bool = False
     lookback_days: int = 1
 
 
 @dataclass
 class LLMConfig:
+    """Optional LLM provider settings for the report summary."""
+
     enabled: bool = False
-    provider: str = "openai"  # openai | custom
+    provider: str = "openai"  # openai | claude | local
     model: str = "gpt-4o-mini"
     api_key: str = ""
     base_url: str = ""
@@ -68,13 +72,16 @@ class LLMConfig:
 
 @dataclass
 class Schedule:
+    """Daily run time for `litsearch schedule` (system local time)."""
+
     time: str = "08:00"
-    timezone: str = "UTC"
     enabled: bool = False
 
 
 @dataclass
 class Config:
+    """The fully-loaded contents of litsearch.toml."""
+
     profile: Profile = field(default_factory=Profile)
     keywords: list[KeywordGroup] = field(default_factory=list)
     authors: list[Author] = field(default_factory=list)
@@ -88,8 +95,7 @@ class Config:
 
 DEFAULT_CONFIG = """\
 [profile]
-# Your name and research field — used in report headers.
-name = "Your Name"
+# Your research field — used to brief the LLM summary, if enabled.
 field = "your research field"
 
 # ── Keyword Groups ──────────────────────────────────────────────────────
@@ -120,15 +126,13 @@ must_have = []   # e.g. ["membrane", "protein"]
 # ── Sources ─────────────────────────────────────────────────────────────
 [sources]
 pubmed = true            # NCBI PubMed (free, no API key needed)
-semantic_scholar = false  # requires free API key
 lookback_days = 1         # how many days to search
 
 # ── Output ──────────────────────────────────────────────────────────────
 [output]
 format = "markdown"       # html or markdown
 theme = "litsearch"       # litsearch | none  (html only)
-max_highlights = 20       # top N papers in the digest
-group_by = "category"     # category | relevance | date
+max_highlights = 20       # top N papers in the digest; 0 = unlimited
 # dir = ""                # output directory; empty = CWD (e.g. "~/notes/obsidian")
 
 # ── LLM (optional) ──────────────────────────────────────────────────────
@@ -143,11 +147,10 @@ api_key = ""                 # or set LITSEARCH_OPENAI_API_KEY / LITSEARCH_ANTHR
 base_url = ""                # local only, e.g. http://localhost:11434/v1
 
 # ── Schedule (optional) ─────────────────────────────────────────────────
-# litsearch schedule reads this section.
+# litsearch schedule reads this section. Runs at `time` in system local time.
 
 [schedule]
 time = "08:00"
-timezone = "UTC"
 enabled = false
 """
 

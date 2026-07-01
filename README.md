@@ -36,11 +36,10 @@ The report is saved as `litsearch_report_YYYY-MM-DD.html` in the current directo
 
 ```toml
 [profile]
-name = "Your Name"
 field = "your research field"
 ```
 
-Used in the report header.
+Used to brief the optional LLM summary.
 
 ### Keyword groups
 
@@ -82,7 +81,7 @@ lookback_days = 1       # how many days back to search
 
 [output]
 format = "html"         # html | markdown
-max_highlights = 20     # top N papers shown in the digest
+max_highlights = 20     # top N papers shown in the digest; 0 = unlimited
 ```
 
 ## Run over a custom date range
@@ -99,7 +98,6 @@ To get a digest every morning, enable scheduling in your config:
 [schedule]
 enabled = true
 time = "08:00"
-timezone = "Europe/London"
 ```
 
 Then run:
@@ -108,7 +106,7 @@ Then run:
 litsearch schedule
 ```
 
-This installs a systemd timer (Linux) or launchd agent (macOS) that runs `litsearch run` at the configured time.
+This installs a systemd timer (Linux) or launchd agent (macOS) that runs `litsearch run` daily at `time`, in the system's local timezone.
 
 ## Optional: LLM summaries
 
@@ -127,7 +125,7 @@ model = "gpt-4o-mini"
 api_key = ""    # or set LITSEARCH_OPENAI_API_KEY in your environment
 ```
 
-When enabled, the top papers get a one-sentence explanation of why they matched your profile.
+When enabled, each report gets a 2-4 sentence AI summary of the day's top matches.
 
 ## Acknowledgements
 This project was my first real foray into working with agents. Specifically, I used Claude Sonnet 4.6, the ponytail plugin, and reviewed all code changes myself.

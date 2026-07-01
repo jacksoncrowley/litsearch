@@ -62,6 +62,8 @@ def render_report(
     version: str = "0.1.0",
     summary: str = "",
 ) -> str:
+    """Render scored papers as a single self-contained HTML report."""
+
     def esc(s: str) -> str:
         return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
 
